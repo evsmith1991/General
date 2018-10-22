@@ -23,3 +23,5 @@ select variant
 , var_pop(red_yn) as var_red_per
 from sandbox.stay_high_test
 group by 1;
+
+--Sheet calculations: https://docs.google.com/spreadsheets/d/1G11vuxnf-puoZLYgFB4YLCk3-vh7NC9RM0c2dcLCM2o/edit#gid=0
