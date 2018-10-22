@@ -1,36 +1,25 @@
-create table grp_gdoop_bizops_db.clo_reminder_test2 as
-select a.consumer_id, a.variant, a.send_date
-, case when datediff(tr.auth_date, a.send_date) between 0 and 7 then 1 else 0 end as red_7d_yn 
-, count(distinct case when datediff(tr.auth_date, a.send_date) <= 7 then tr.id else null end) as redemptions
-, case when datediff(tr.auth_date, a.send_date) between 0 and  7 and tr.deal_uuid = a.deal_uuid then 1 else 0 end as red_7d_test_deal_yn 
-, count(distinct case when datediff(tr.auth_date, a.send_date) <= 7 and tr.deal_uuid = a.deal_uuid then tr.id else null end) as redemptions_test_deal
-from (
-    select u.consumer_id, u.variant, u.deal_uuid, u.send_date
-    from grp_gdoop_bizops_db.clo_reminder_test_users u
-) a
-left join (
-    select u.consumer_id, o.deal_id as deal_uuid, tr.id, to_date(tr.timestamp_col) as auth_date
-    from user_gp.clo_users u
-    join user_gp.clo_claims cl on cl.user_id = u.id --and cl.pre_claim_reward = 0
-    join user_gp.clo_offers o on o.id = cl.offer_id
-    join (
+create table sandbox.stay_high_test as(
+    select v.consumer_id, v.variant
+    , count(distinct tr.id) as num_reds
+    , max(case when tr.id is not null then 1 else 0 end) as red_yn
+    from sandbox.stay_high_user_variants v
+    join user_gp.clo_users u on u.consumer_id = v.consumer_id
+    left join user_gp.clo_claims cl on cl.user_id = u.id and cl.pre_claim_reward = 0
+    left join (
         select *
         from user_gp.clo_visa_transactions
-        where to_date(timestamp_col) between '2018-03-27' and '2018-04-09'
-        and raw_transaction_type = 'Auth'
+        where timestamp_col between date '2018-05-30' and date '2018-06-05'
+        and raw_transaction_type = 'auth'
+        and is_eligible = 't'
     ) tr on tr.claim_id = cl.id
-) tr on tr.consumer_id = a.consumer_id 
-group by 1,2,3,4,6;
+    group by 1,2
+) with data primary index (consumer_id, variant);
 
-select variant, count(distinct consumer_id) as num_users
-, avg(red_7d_yn) as avg_redeemer_per
-, var_pop(red_7d_yn) as var_redeemer_per
-, avg(redemptions) as avg_redemptions
-, var_pop(redemptions) as var_redemptions
-, avg(red_7d_test_deal_yn) as avg_same_deal_redeemer_per
-, var_pop(red_7d_test_deal_yn) as var_same_deal_redeemer_per
-, avg(redemptions_test_deal) as avg_same_deal_redemptions
-, var_pop(redemptions_test_deal) as var_same_deal_redemptions
-from grp_gdoop_bizops_db.clo_reminder_test2
---where send_date between '2018-03-28' and '2018-03-29'
+select variant
+, count(distinct consumer_id) as num_users
+, average(num_reds) as avg_reds
+, var_pop(num_reds) as var_reds
+, average(red_yn) as avg_red_per
+, var_pop(red_yn) as var_red_per
+from sandbox.stay_high_test
 group by 1;
