@@ -1,0 +1,3 @@
+ps aux | grep evsmith
+find the job number
+kill -9 [job#]
