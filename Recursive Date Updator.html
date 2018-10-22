@@ -1,0 +1,127 @@
+<html>
+	<body>
+		<pre id="result"></pre>
+	</body>
+	<script src="http://code.jquery.com/jquery-1.12.0.min.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function(){
+			Date.prototype.addDays = function(days) {
+	    		this.setDate(this.getDate() + parseInt(days));
+	    		return this;
+			};
+			Date.prototype.yyyymmdd = function() {
+			   var yyyy = this.getFullYear().toString();
+			   var mm = (this.getMonth()+1).toString(); // getMonth() is zero-based
+			   var dd  = this.getDate().toString();
+			   return yyyy + "-"+(mm[1]?mm:"0"+mm[0]) + "-"+(dd[1]?dd:"0"+dd[0]); // padding
+			};
+			var query = ""+
+				"---FPV by Page---"+"\n"+
+				"create volatile table FPVs as ("+"\n"+
+				"	select distinct(page_name) as page_name , sum(FPVs) as FPVs, event_date"+"\n"+
+				"	from("+"\n"+
+				"		select fc.event_date, page_name,"+"\n"+
+				"		case when page_name is not null then 1 else 0 end as FPVs"+"\n"+
+				"		from user_groupondw.fact_clickstream fc"+"\n"+
+				"		join user_groupondw.gbl_agg_traffic_day_user d on d.cookie_b = fc.cookie_b and d.event_date = fc.event_date"+"\n"+
+				"		join user_groupondw.dim_page pa on pa.page_key = fc.source_page_key"+"\n"+
+				"		where fc.event_date = 'CURRENT_DATE'"+"\n"+
+				"		and d.first_page_type = 'merchant/show'"+"\n"+
+				"		and fc.event_type_key = 2"+"\n"+
+				"		and fc.page_type_key = 136"+"\n"+
+				"		and fc.referrer_url not like '%groupon.com%'"+"\n"+
+				"		) a"+"\n"+
+				" 	group by 1,3"+"\n"+
+				" ) with data primary index (page_name, event_date, FPVs) on commit preserve rows;"+"\n"+
+				""+"\n"+
+				"---Widgest Flags---"+"\n"+
+				"create volatile table flag_work_table1 as("+"\n"+
+				"    select event_date, source_page_key, widget_name"+"\n"+
+				"    from user_groupondw.bld_widgets w"+"\n"+
+				"    join user_groupondw.fact_clickstream fc "+"\n"+
+				"        on fc.page_view_id = w.page_id "+"\n"+
+				"        and fc.event_date = w.log_date"+"\n"+
+				"        and fc.cookie_b = w.user_browser_id"+"\n"+
+				"    where event_date = 'CURRENT_DATE'"+"\n"+
+				"    and widget_name in ('MerchantOffers', 'carousel', 'RightRailDealCarousel', 'DealCarousel', 'Recommendation-thumbs-up', 'tips-table', 'NearbyPlacesContainer', 'merchant-gallery')"+"\n"+
+				"    and event_type_key = 2"+"\n"+
+				"    AND  page_type_key = 136"+"\n"+
+				"    AND  bot_ind = 0"+"\n"+
+				") with data primary index (source_page_key, event_date) on commit preserve rows;"+"\n"+
+				""+"\n"+
+				"create volatile table widgetflags as("+"\n"+
+				"    select pl.place_id, d.event_date, "+"\n"+
+				"            case when widget_name = 'MerchantOffers' then 1 else 0 end as deal_flag,"+"\n"+
+				"            case when widget_name = 'carousel' then 1 else 0 end as explore_nearby_flag,"+"\n"+
+				"            case when widget_name = 'RightRailDealCarousel' then 1 else 0 end as nerby_deal_flag,"+"\n"+
+				"            case when widget_name = 'DealCarousel' then 1 else 0 end as rec_for_you_flag,"+"\n"+
+				"            case when widget_name = 'Recommendation-thumbs-up' then 1 else 0 end as thumbs_up_flag,"+"\n"+
+				"            case when widget_name = 'tips-table' then 1 else 0 end as tips_flag,"+"\n"+
+				"            case when widget_name = 'NearbyPlacesContainer' then 1 else 0 end as nearby_places_flag,"+"\n"+
+				"            case when widget_name = 'merchant-gallery' then 1 else 0 end as images_flag"+"\n"+
+				"    from user_groupondw.dim_page pa"+"\n"+
+				"    join sandbox.seo_co_places pl on pl.biz_page_slug = pa.page_name"+"\n"+
+				"    join flag_work_table1 d on d.source_page_key = pa.page_key"+"\n"+
+				") with data primary index (place_id, event_date) on commit preserve rows;"+"\n"+
+				""+"\n"+
+				"---Total PVs by Page---"+"\n"+
+				"create volatile table TotalPVs as ("+"\n"+
+				"	select distinct(biz_page_slug) as page_name, coalesce(sum(total_PVs),0) as total_PVs, event_date"+"\n"+
+				"	from("+"\n"+
+				"		select fc.event_date, pl.biz_page_slug, page_name,"+"\n"+
+				"		case when page_name is not null then 1 else 0 end as total_PVs"+"\n"+
+				"		from sandbox.seo_co_places pl"+"\n"+
+				"		left join user_groupondw.dim_page pa on pl.biz_page_slug = pa.page_name"+"\n"+
+				"		left join user_groupondw.fact_clickstream fc"+"\n"+
+				"			on pa.page_key = fc.source_page_key"+"\n"+
+				"		where fc.event_date  = 'CURRENT_DATE'"+"\n"+
+				"		and fc.event_type_key = 2"+"\n"+
+				"		and fc.page_type_key = 136"+"\n"+
+				"		) a"+"\n"+
+				" 	group by 1,3"+"\n"+
+				" ) with data primary index (page_name, event_date, total_PVs) on commit preserve rows;"+"\n"+
+				""+"\n"+
+				"---Final Build---"+"\n"+
+				"insert into sandbox.evan_mpp_master (event_date, place_id, biz_page_slug, total_PVs, FPVs, direct_gb, direct_nob, direct_nor, NS_desc_flag, "+"\n"+
+				"	NS_snippet_flag, deal_flag, explore_nearby_flag, nerby_deal_flag, rec_for_you_flag, thumbs_up_flag, tips_flag, nearby_places_flag, images_flag)"+"\n"+
+				"	select dd.day_rw as event_date, pl.place_id, pl.biz_page_slug, "+"\n"+
+				"		coalesce(pv.total_PVs,0) as total_PVs, coalesce(fpv.FPVs,0) as FPVs,"+"\n"+
+				"		coalesce(rev.direct_gb,0) as direct_gb, coalesce(rev.direct_nob,0) as direct_nob, "+"\n"+
+				"		coalesce(rev.direct_nor,0) as direct_nor,"+"\n"+
+				"		case when e1.upload_date <= dd.day_rw then 1 else 0 end as NS_desc_flag, "+"\n"+
+				"		case when sn.upload_date <= dd.day_rw then 1 else 0 end as NS_snippet_flag,"+"\n"+
+				"		coalesce(deal_flag,0) as deal_flag, coalesce(explore_nearby_flag,0) as explore_nearby_flag, "+"\n"+
+				"		coalesce(nerby_deal_flag,0) as nerby_deal_flag, coalesce(rec_for_you_flag,0) as rec_for_you_flag, "+"\n"+
+				"		coalesce(thumbs_up_flag,0) as thumbs_up_flag, coalesce(tips_flag,0) as tips_flag,"+"\n"+
+				"		coalesce(nearby_places_flag,0) as nearby_places_flag, coalesce(images_flag,0) as images_flag"+"\n"+
+				"	from sandbox.seo_co_places pl"+"\n"+
+				"		left join FPVs fpv "+"\n"+
+				"			on fpv.page_name = pl.biz_page_slug"+"\n"+
+				"		left join TotalPVs pv "+"\n"+
+				"			on pv.page_name = pl.biz_page_slug"+"\n"+
+				"		left join widgetflags df "+"\n"+
+				"			on df.place_id = pl.place_id"+"\n"+
+				"		left join sandbox.evan_mpp_rev rev "+"\n"+
+				"			on rev.page_name = pl.biz_page_slug"+"\n"+
+				"		left join sandbox.evan_mpp1 e1 "+"\n"+
+				"			on e1.place_uuid = pl.place_id"+"\n"+
+				"		left join sandbox.evan_mpp_snippets sn "+"\n"+
+				"			on sn.place_uuid = pl.place_id"+"\n"+
+				"		join user_groupondw.dim_day dd "+"\n"+
+				"			on dd.day_rw = df.event_date or dd.day_rw = fpv.event_date or dd.day_rw = pv.event_date or dd.day_rw = rev.event_date"+"\n"+
+				"	where dd.day_rw  = 'CURRENT_DATE'"+"\n"+
+				"	group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18;"+"\n"+
+				""+"\n"+
+				"drop table flag_work_table1;"+"\n"+
+				"drop table widgetflags;"+"\n"+
+				"drop table FPVs;"+"\n"+
+				"drop table TotalPVs;"+"\n";
+			var start_date = new Date(2015,6,15);
+			var days = 248;			
+			for(i=0; i<days; i++){							
+				jQuery("#result").append(query.replace(/CURRENT_DATE/g, start_date.yyyymmdd())+"\n");
+				start_date.addDays(1);
+			}
+		});			
+		</script>
+</html>
