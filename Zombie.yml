@@ -1,0 +1,101 @@
+context:
+  create_table: 1
+  load_data: 1
+  fetch_data: 1
+  drop_table: 1
+  rename_table: 1
+  drop_file: 1
+  file_name: ugc_funnel
+  db_name: edw
+
+fetch_data:
+  class: ScriptTask
+  conditions:
+   - expression: ${fetch_data} == 1
+  configuration:
+    script: hive -f ugc_funnel.hql >/home/evsmith/zombies/ugc/funnel/${file_name}.tsv
+
+
+create_table:
+  class: SQLExecute
+  conditions:
+   - expression: ${create_table} == 1
+  configuration:
+    db:
+      adapter: Teradata
+      dsn: ${db_name}
+    sql:
+     - |
+       create multiset table sandbox.bizops_ugc_funnel_temp_2
+        (survey_id varchar(36) PRIMARY KEY NOT NULL,
+        voucher_id varchar(36),
+        created_at varchar(25),
+        viewed_at varchar(25),
+        completed_at varchar(25),
+        sent_flag varchar(1),
+        viewed_flag varchar(1),
+        completed_flag varchar(1),
+        ratings_flag varchar(1),
+        tips_flag varchar(1),
+        positive_flag varchar(1),
+        sf_account_id varchar(18)
+        );
+load_data:
+  class: SQLLoadFromFile
+  conditions:
+   - expression: ${load_data} == 1
+  settings:
+   verify_load_count: 0
+  dependencies:
+   - create_table
+   - fetch_data
+  configuration:
+    db:
+      adapter: Teradata
+      dsn: ${db_name}
+    source_path: /home/evsmith/zombies/ugc/funnel/${file_name}.tsv
+    destination_table: sandbox.bizops_ugc_funnel_temp_2
+    load_options:
+      delimiter: E'\t'
+      skip: 0
+
+drop_table:
+  class: SQLExecute
+  settings:
+    try: 1
+  conditions:
+   - expression: ${drop_table} == 1
+  dependencies:
+    - load_data
+  configuration:
+    db:
+      adapter: Teradata
+      dsn: ${db_name}
+    sql:
+     - drop table sandbox.bizops_ugc_funnel;
+
+rename_table:
+  class: SQLExecute
+  settings:
+    try: 1
+  conditions:
+   - expression: ${rename_table} == 1
+  dependencies:
+    - drop_table
+  configuration:
+    db:
+      adapter: Teradata
+      dsn: ${db_name}
+    sql:
+     - rename table sandbox.bizops_ugc_funnel_temp_2 to sandbox.bizops_ugc_funnel;
+     - grant select on sandbox.bizops_ugc_funnel to public;
+     - grant all on sandbox.bizops_ugc_funnel to ub_bizops;
+
+drop_file:
+  class: ScriptTask
+  conditions:
+   - expression: ${drop_file} == 1
+  dependencies:
+   - rename_table
+  configuration:
+    script: rm ${file_name}.tsv
