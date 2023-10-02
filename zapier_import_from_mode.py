@@ -17,7 +17,7 @@ def _mode_api_get(endpoint_url):
     """
     return requests.get(
                endpoint_url,
-               auth=('59df028f6e65', 'c2f413ecfd7b2cf5af4ade30')
+               auth=(un, pw)
            ).json()
 
 def get_report_runs(url):
