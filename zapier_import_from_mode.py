@@ -8,8 +8,8 @@ from requests.auth import HTTPBasicAuth
 
 MODE_BASE_URL = 'https://modeanalytics.com/'
 MODE_BASE_URL1 = 'https://modeanalytics.com'
-un = '59df028f6e65'
-pw = 'c2f413ecfd7b2cf5af4ade30'
+un = '------------'
+pw = '----------------------'
 
 def _mode_api_get(endpoint_url):
     """
