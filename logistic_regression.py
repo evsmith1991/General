@@ -1,3 +1,5 @@
+#Best for cases when your main correlate metric is binary
+
 pip install pandas statsmodels
 import pandas as pd
 
